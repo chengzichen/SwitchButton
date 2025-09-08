@@ -1,6 +1,4 @@
-plugins {
-    id('com.android.application')
-}
+apply plugin: 'com.android.application'
 
 android {
     compileSdk 33
@@ -14,7 +12,10 @@ android {
         versionCode Integer.parseInt(VERSION_CODE)
         versionName VERSION_NAME
     }
-
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
     buildTypes {
         release {
             minifyEnabled true
