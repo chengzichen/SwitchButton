@@ -22,6 +22,7 @@ import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.TypedValue;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
 import android.view.ViewConfiguration;
@@ -76,7 +77,6 @@ public class SwitchButton extends CompoundButton {
     private RectF mPresentThumbRectF;
     private float mStartX, mStartY, mLastX;
     private int mTouchSlop;
-    private int mClickTimeout;
     private Paint mRectPaint;
     private CharSequence mTextOn;
     private CharSequence mTextOff;
@@ -94,7 +94,7 @@ public class SwitchButton extends CompoundButton {
     private boolean mReady = false;
     private boolean mCatch = false;
     private UnsetPressedState mUnsetPressedState;
-
+    private GestureDetector mGestureDetector;
     private CompoundButton.OnCheckedChangeListener mChildOnCheckedChangeListener;
 
     public SwitchButton(Context context, AttributeSet attrs, int defStyle) {
@@ -114,7 +114,6 @@ public class SwitchButton extends CompoundButton {
 
     private void init(AttributeSet attrs) {
         mTouchSlop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
-        mClickTimeout = ViewConfiguration.getPressedStateDuration() + ViewConfiguration.getTapTimeout();
 
         mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         mRectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -140,6 +139,15 @@ public class SwitchButton extends CompoundButton {
         });
 
         mPresentThumbRectF = new RectF();
+
+        // Initialize GestureDetector
+        mGestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                performClick();
+                return true;
+            }
+        });
 
         Resources res = getResources();
         float density = res.getDisplayMetrics().density;
@@ -693,6 +701,11 @@ public class SwitchButton extends CompoundButton {
             return false;
         }
 
+        // 使用GestureDetector处理事件，如果GestureDetector处理了该事件，则直接返回
+        if (mGestureDetector.onTouchEvent(event)) {
+            return true;
+        }
+
         int action = event.getAction();
 
         float deltaX = event.getX() - mStartX;
@@ -722,17 +735,13 @@ public class SwitchButton extends CompoundButton {
             case MotionEvent.ACTION_CANCEL:
             case MotionEvent.ACTION_UP:
                 mCatch = false;
-                float time = event.getEventTime() - event.getDownTime();
-                if (Math.abs(deltaX) < mTouchSlop && Math.abs(deltaY) < mTouchSlop && time < mClickTimeout) {
-                    performClick();
+                // 移除了基于时间的点击判断，完全依赖GestureDetector
+                boolean nextStatus = getStatusBasedOnPos();
+                if (nextStatus != isChecked()) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    setChecked(nextStatus);
                 } else {
-                    boolean nextStatus = getStatusBasedOnPos();
-                    if (nextStatus != isChecked()) {
-                        playSoundEffect(SoundEffectConstants.CLICK);
-                        setChecked(nextStatus);
-                    } else {
-                        animateToState(nextStatus);
-                    }
+                    animateToState(nextStatus);
                 }
                 if (isPressed()) {
                     if (mUnsetPressedState == null) {
