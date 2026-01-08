@@ -524,21 +524,21 @@ public class SwitchButton extends CompoundButton {
             thumbTop = getPaddingTop() + Math.max(0, mThumbMargin.top) + (contentHeight - drawingHeight + 1) / 2f;
         }
 
-        float thumbLeft;
-        if (contentWidth <= mBackWidth) {
-            thumbLeft = getPaddingLeft() + Math.max(0, mThumbMargin.left);
-        } else {
-            thumbLeft = getPaddingLeft() + Math.max(0, mThumbMargin.left) + (contentWidth - drawingWidth + 1) / 2f;
-        }
+        // mThumbRectF should represent the thumb's position at the logical "off" state (progress 0) for LTR.
+        // This is the leftmost possible position for the thumb.
+        float ltrThumbLeftOff = getPaddingLeft() + Math.max(0, mThumbMargin.left);
+        mThumbRectF.set(ltrThumbLeftOff, thumbTop, ltrThumbLeftOff + mThumbWidth, thumbTop + mThumbHeight);
 
-        mThumbRectF.set(thumbLeft, thumbTop, thumbLeft + mThumbWidth, thumbTop + mThumbHeight);
-
+        // mBackRectF is positioned relative to this initial mThumbRectF.
         float backLeft = mThumbRectF.left - mThumbMargin.left;
         mBackRectF.set(backLeft,
                 mThumbRectF.top - mThumbMargin.top,
                 backLeft + mBackWidth,
                 mThumbRectF.top - mThumbMargin.top + mBackHeight);
 
+        // mSafeRectF defines the horizontal range for the thumb's left edge, assuming LTR movement from left to right.
+        // Its left is the thumb's left edge in LTR "off" position.
+        // Its right is the thumb's left edge in LTR "on" position.
         mSafeRectF.set(mThumbRectF.left, 0, mBackRectF.right - mThumbMargin.right - mThumbRectF.width(), 0);
 
         float minBackRadius = Math.min(mBackRectF.width(), mBackRectF.height()) / 2.f;
@@ -548,14 +548,31 @@ public class SwitchButton extends CompoundButton {
             mBackDrawable.setBounds((int) mBackRectF.left, (int) mBackRectF.top, ceil(mBackRectF.right), ceil(mBackRectF.bottom));
         }
 
+        // Text positioning: Need to be RTL aware for which side "on" and "off" text appears.
         if (mOnLayout != null) {
-            float onLeft = mBackRectF.left + (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.right - mOnLayout.getWidth()) / 2f - mTextAdjust;
+            float onLeft;
+            // "on" text is on the side where the thumb moves *to* when checked.
+            // LTR: thumb moves right, "on" text is right side of back.
+            // RTL: thumb moves left, "on" text is left side of back.
+            if (isRtl()) {
+                onLeft = mBackRectF.left + (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.left - mOnLayout.getWidth()) / 2f + mTextAdjust;
+            } else {
+                onLeft = mBackRectF.right - (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.right - mOnLayout.getWidth()) / 2f - mOnLayout.getWidth() - mTextAdjust;
+            }
             float onTop = mBackRectF.top + (mBackRectF.height() - mOnLayout.getHeight()) / 2;
             mTextOnRectF.set(onLeft, onTop, onLeft + mOnLayout.getWidth(), onTop + mOnLayout.getHeight());
         }
 
         if (mOffLayout != null) {
-            float offLeft = mBackRectF.right - (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.left - mOffLayout.getWidth()) / 2f - mOffLayout.getWidth() + mTextAdjust;
+            float offLeft;
+            // "off" text is on the side where the thumb moves *from* when checked (i.e., where it starts).
+            // LTR: thumb starts left, "off" text is left side of back.
+            // RTL: thumb starts right, "off" text is right side of back.
+            if (isRtl()) {
+                offLeft = mBackRectF.right - (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.right - mOffLayout.getWidth()) / 2f - mOffLayout.getWidth() - mTextAdjust;
+            } else {
+                offLeft = mBackRectF.left + (mBackRectF.width() + mTextThumbInset - mThumbWidth - mThumbMargin.left - mOffLayout.getWidth()) / 2f + mTextAdjust;
+            }
             float offTop = mBackRectF.top + (mBackRectF.height() - mOffLayout.getHeight()) / 2;
             mTextOffRectF.set(offLeft, offTop, offLeft + mOffLayout.getWidth(), offTop + mOffLayout.getHeight());
         }
@@ -573,6 +590,9 @@ public class SwitchButton extends CompoundButton {
         if (!mReady) {
             return;
         }
+
+        // Calculate visual progress based on RTL
+        float visualProgress = isRtl() ? (1f - mProgress) : mProgress;
 
         // fade back
         if (mIsBackUseDrawable) {
@@ -623,11 +643,24 @@ public class SwitchButton extends CompoundButton {
         }
 
         // text
-        Layout switchText = getProgress() > 0.5 ? mOnLayout : mOffLayout;
-        RectF textRectF = getProgress() > 0.5 ? mTextOnRectF : mTextOffRectF;
+        Layout switchText;
+        RectF textRectF;
+        int textColor;
+
+        // Determine which text to draw based on visualProgress
+        if (visualProgress > 0.5) { // Visually "on"
+            switchText = mOnLayout;
+            textRectF = mTextOnRectF;
+            textColor = mOnTextColor;
+        } else { // Visually "off"
+            switchText = mOffLayout;
+            textRectF = mTextOffRectF;
+            textColor = mOffTextColor;
+        }
+
         if (switchText != null && textRectF != null) {
-            int alpha = (int) (255 * (getProgress() >= 0.75 ? getProgress() * 4 - 3 : (getProgress() < 0.25 ? 1 - getProgress() * 4 : 0)));
-            int textColor = getProgress() > 0.5 ? mOnTextColor : mOffTextColor;
+            // Adjust text alpha based on visualProgress
+            int alpha = (int) (255 * (visualProgress >= 0.75 ? visualProgress * 4 - 3 : (visualProgress < 0.25 ? 1 - visualProgress * 4 : 0)));
             int colorAlpha = Color.alpha(textColor);
             colorAlpha = colorAlpha * alpha / 255;
             switchText.getPaint().setARGB(colorAlpha, Color.red(textColor), Color.green(textColor), Color.blue(textColor));
@@ -638,8 +671,9 @@ public class SwitchButton extends CompoundButton {
         }
 
         // thumb
-        mPresentThumbRectF.set(mThumbRectF);
-        mPresentThumbRectF.offset(mProgress * mSafeRectF.width(), 0);
+        mPresentThumbRectF.set(mSafeRectF.left + visualProgress * mSafeRectF.width(), mThumbRectF.top,
+                mSafeRectF.left + visualProgress * mSafeRectF.width() + mThumbWidth, mThumbRectF.bottom);
+
         if (mIsThumbUseDrawable) {
             mThumbDrawable.setBounds((int) mPresentThumbRectF.left, (int) mPresentThumbRectF.top, ceil(mPresentThumbRectF.right), ceil(mPresentThumbRectF.bottom));
             mThumbDrawable.draw(canvas);
@@ -656,7 +690,7 @@ public class SwitchButton extends CompoundButton {
             mRectPaint.setColor(Color.parseColor("#000000"));
             canvas.drawLine(mSafeRectF.left, mThumbRectF.top, mSafeRectF.right, mThumbRectF.top, mRectPaint);
             mRectPaint.setColor(Color.parseColor("#00CC00"));
-            canvas.drawRect(getProgress() > 0.5 ? mTextOnRectF : mTextOffRectF, mRectPaint);
+            canvas.drawRect(visualProgress > 0.5 ? mTextOnRectF : mTextOffRectF, mRectPaint);
         }
     }
 
@@ -721,7 +755,14 @@ public class SwitchButton extends CompoundButton {
 
             case MotionEvent.ACTION_MOVE:
                 float x = event.getX();
-                setProgress(getProgress() + (x - mLastX) / mSafeRectF.width());
+                float offset = (x - mLastX) / mSafeRectF.width();
+                if (isRtl()) {
+                    // For RTL, dragging left increases progress, dragging right decreases.
+                    setProgress(getProgress() - offset);
+                } else {
+                    // For LTR, dragging right increases progress, dragging left decreases.
+                    setProgress(getProgress() + offset);
+                }
                 mLastX = x;
                 if (!mCatch && (Math.abs(deltaX) > mTouchSlop / 2f || Math.abs(deltaY) > mTouchSlop / 2f)) {
                     if (deltaY == 0 || Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -1165,6 +1206,11 @@ public class SwitchButton extends CompoundButton {
             //noinspection deprecation
             return context.getResources().getColorStateList(id);
         }
+    }
+
+    // Add this helper method for RTL support
+    private boolean isRtl() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && getLayoutDirection() == LAYOUT_DIRECTION_RTL;
     }
 
     static class SavedState extends BaseSavedState {
